@@ -378,12 +378,10 @@ impl BrowserTool {
             return Ok(BrowserOutput::success("Browser already running"));
         }
 
-        let mut builder = ChromeConfig::builder();
+        let mut builder = ChromeConfig::builder().no_sandbox();
 
-        if self.config.headless {
-            builder = builder.no_sandbox();
-        } else {
-            builder = builder.with_head().no_sandbox();
+        if !self.config.headless {
+            builder = builder.with_head().window_size(1280, 900);
         }
 
         if let Some(path) = &self.config.executable_path {
@@ -393,6 +391,12 @@ impl BrowserTool {
         let chrome_config = builder
             .build()
             .map_err(|error| BrowserError::new(format!("failed to build browser config: {error}")))?;
+
+        tracing::info!(
+            headless = self.config.headless,
+            executable = ?self.config.executable_path,
+            "launching chrome"
+        );
 
         let (browser, mut handler) = Browser::launch(chrome_config)
             .await
