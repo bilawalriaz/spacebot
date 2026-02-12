@@ -469,5 +469,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::info!("spacebot stopped");
-    Ok(())
+
+    // Force exit — detached tasks (e.g. the serenity gateway client) may keep
+    // the tokio runtime alive after all owned resources have been cleaned up.
+    std::process::exit(0);
 }

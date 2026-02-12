@@ -268,11 +268,16 @@ impl Scheduler {
         timers.insert(heartbeat_id_for_map, handle);
     }
 
-    /// Shutdown all heartbeat timers.
+    /// Shutdown all heartbeat timers and wait for them to finish.
     pub async fn shutdown(&self) {
-        let mut timers = self.timers.write().await;
-        for (id, handle) in timers.drain() {
+        let handles: Vec<(String, tokio::task::JoinHandle<()>)> = {
+            let mut timers = self.timers.write().await;
+            timers.drain().collect()
+        };
+
+        for (id, handle) in handles {
             handle.abort();
+            let _ = handle.await;
             tracing::debug!(heartbeat_id = %id, "heartbeat timer stopped");
         }
     }
