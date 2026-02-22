@@ -11,7 +11,7 @@ use teloxide::payloads::setters::*;
 use teloxide::requests::{Request, Requester};
 use teloxide::types::{
     ChatAction, ChatId, FileId, InputFile, InputPollOption, MediaKind, MessageId, MessageKind,
-    ReactionType, ReplyParameters, UpdateKind, UserId,
+    ParseMode, ReactionType, ReplyParameters, UpdateKind, UserId,
 };
 
 use std::collections::{HashMap, VecDeque};
@@ -289,6 +289,7 @@ impl Messaging for TelegramAdapter {
                 for chunk in split_message(&text, MAX_MESSAGE_LENGTH) {
                     self.bot
                         .send_message(chat_id, &chunk)
+                        .parse_mode(ParseMode::MarkdownV2)
                         .send()
                         .await
                         .context("failed to send telegram message")?;
@@ -300,6 +301,7 @@ impl Messaging for TelegramAdapter {
                 for chunk in split_message(&text, MAX_MESSAGE_LENGTH) {
                     self.bot
                         .send_message(chat_id, &chunk)
+                        .parse_mode(ParseMode::MarkdownV2)
                         .send()
                         .await
                         .context("failed to send telegram message")?;
@@ -324,6 +326,7 @@ impl Messaging for TelegramAdapter {
                         request = request.reply_parameters(ReplyParameters::new(reply_id));
                     }
                     request
+                        .parse_mode(ParseMode::MarkdownV2)
                         .send()
                         .await
                         .context("failed to send telegram thread reply")?;
@@ -340,7 +343,7 @@ impl Messaging for TelegramAdapter {
                 let input_file = InputFile::memory(data).file_name(filename);
                 let mut request = self.bot.send_document(chat_id, input_file);
                 if let Some(caption_text) = caption {
-                    request = request.caption(caption_text);
+                    request = request.caption(caption_text).parse_mode(ParseMode::MarkdownV2);
                 }
                 request
                     .send()
@@ -406,6 +409,7 @@ impl Messaging for TelegramAdapter {
                     if let Err(error) = self
                         .bot
                         .edit_message_text(stream.chat_id, stream.message_id, display_text)
+                        .parse_mode(ParseMode::MarkdownV2)
                         .send()
                         .await
                     {
@@ -430,6 +434,7 @@ impl Messaging for TelegramAdapter {
                 let chat_id = self.extract_chat_id(message)?;
                 self.bot
                     .send_message(chat_id, text)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .await
                     .context("failed to send ephemeral fallback on telegram")?;
             }
@@ -438,6 +443,7 @@ impl Messaging for TelegramAdapter {
                 let chat_id = self.extract_chat_id(message)?;
                 self.bot
                     .send_message(chat_id, text)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .await
                     .context("failed to send scheduled message fallback on telegram")?;
             }
@@ -497,6 +503,7 @@ impl Messaging for TelegramAdapter {
             for chunk in split_message(&text, MAX_MESSAGE_LENGTH) {
                 self.bot
                     .send_message(chat_id, &chunk)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .send()
                     .await
                     .context("failed to broadcast telegram message")?;
@@ -505,6 +512,7 @@ impl Messaging for TelegramAdapter {
             for chunk in split_message(&text, MAX_MESSAGE_LENGTH) {
                 self.bot
                     .send_message(chat_id, &chunk)
+                    .parse_mode(ParseMode::MarkdownV2)
                     .send()
                     .await
                     .context("failed to broadcast telegram message")?;
