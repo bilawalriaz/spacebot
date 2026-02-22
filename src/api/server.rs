@@ -11,11 +11,11 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{StatusCode, Uri, header};
 use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use rust_embed::Embed;
 use serde_json::json;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
