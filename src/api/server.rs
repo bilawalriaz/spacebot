@@ -11,7 +11,7 @@ use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{StatusCode, Uri, header};
 use axum::middleware::{self, Next};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use rust_embed::Embed;
 use serde_json::json;

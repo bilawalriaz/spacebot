@@ -32,8 +32,9 @@ use tokio::task::JoinHandle;
 /// Blocks private/loopback IPs, link-local addresses, and cloud metadata endpoints
 /// to prevent server-side request forgery.
 fn validate_url(url: &str) -> Result<(), BrowserError> {
-    let parsed = Url::parse(url)
-        .map_err(|error| BrowserError::new(format!("invalid URL '{url}': {error}")))?;
+    let parsed = reqwest::Url::parse(url).map_err(|error| {
+        BrowserError::new(format!("invalid URL '{url}': {error}"))
+    })?;
 
     match parsed.scheme() {
         "http" | "https" => {}
