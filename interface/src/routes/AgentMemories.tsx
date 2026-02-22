@@ -216,12 +216,12 @@ export function AgentMemories({ agentId }: AgentMemoriesProps) {
 
 	const deleteMutation = useMutation({
 		mutationFn: (memoryId: string) => api.deleteMemory(agentId, memoryId),
-		onSuccess: () => {
+		onSuccess: (_response, memoryId) => {
 			refreshMemories();
-			setDeleteConfirmMemoryId(null);
-			if (expandedId === deleteConfirmMemoryId) {
+			if (expandedId === memoryId) {
 				setExpandedId(null);
 			}
+			setDeleteConfirmMemoryId(null);
 		},
 	});
 
@@ -262,11 +262,16 @@ export function AgentMemories({ agentId }: AgentMemoriesProps) {
 	const virtualizer = useVirtualizer({
 		count: memories.length,
 		getScrollElement: () => parentRef.current,
+		getItemKey: (index) => memories[index]?.id ?? index,
 		estimateSize: useCallback((index: number) => {
 			return expandedId === memories[index]?.id ? 200 : 48;
 		}, [expandedId, memories]),
 		overscan: 10,
 	});
+
+	useEffect(() => {
+		virtualizer.measure();
+	}, [memories.length, expandedId, virtualizer]);
 
 	// Reset expanded when data changes
 	useEffect(() => {
