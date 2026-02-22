@@ -145,6 +145,8 @@ pub struct Channel {
     pending_retrigger_metadata: HashMap<String, serde_json::Value>,
     /// Deadline for firing the pending retrigger (debounce timer).
     retrigger_deadline: Option<tokio::time::Instant>,
+    /// Optional send_agent_message tool (only when agent has active links).
+    send_agent_message_tool: Option<crate::tools::SendAgentMessageTool>,
 }
 
 impl Channel {
@@ -226,6 +228,7 @@ impl Channel {
             pending_retrigger: false,
             pending_retrigger_metadata: HashMap::new(),
             retrigger_deadline: None,
+            send_agent_message_tool: None,
         };
 
         (channel, message_tx)
@@ -623,10 +626,13 @@ impl Channel {
 
         let available_channels = self.build_available_channels().await;
 
+        let org_context = self.build_org_context(&prompt_engine);
+        let link_context = self.build_link_context(&prompt_engine);
+
         let empty_to_none = |s: String| if s.is_empty() { None } else { Some(s) };
 
         prompt_engine
-            .render_channel_prompt(
+            .render_channel_prompt_with_links(
                 empty_to_none(identity_context),
                 empty_to_none(memory_bulletin.to_string()),
                 empty_to_none(skills_prompt),
@@ -635,6 +641,8 @@ impl Channel {
                 empty_to_none(status_text),
                 coalesce_hint,
                 available_channels,
+                org_context,
+                link_context,
             )
             .expect("failed to render channel prompt")
     }
@@ -673,6 +681,20 @@ impl Channel {
         } else {
             Vec::new()
         };
+
+        // Emit AgentMessageReceived event for internal agent-to-agent messages
+        if message.source == "internal" {
+            if let Some(from_agent_id) = message.metadata.get("from_agent_id").and_then(|v| v.as_str()) {
+                if let Some(link_id) = message.metadata.get("link_id").and_then(|v| v.as_str()) {
+                    self.deps.event_tx.send(ProcessEvent::AgentMessageReceived {
+                        from_agent_id: Arc::from(from_agent_id),
+                        to_agent_id: self.deps.agent_id.clone(),
+                        link_id: link_id.to_string(),
+                        channel_id: self.id.clone(),
+                    }).ok();
+                }
+            }
+        }
 
         // Persist user messages (skip system re-triggers)
         if message.source != "system" {
@@ -794,6 +816,102 @@ impl Channel {
         prompt_engine.render_available_channels(entries).ok()
     }
 
+    /// Build org context showing the agent's position in the communication hierarchy.
+    fn build_org_context(
+        &self,
+        prompt_engine: &crate::prompts::PromptEngine,
+    ) -> Option<String> {
+        let agent_id = self.deps.agent_id.as_ref();
+        let all_links = self.deps.links.load();
+        let links = crate::links::links_for_agent(&all_links, agent_id);
+
+        if links.is_empty() {
+            return None;
+        }
+
+        let mut superiors = Vec::new();
+        let mut subordinates = Vec::new();
+        let mut peers = Vec::new();
+
+        for link in &links {
+            let is_from = link.from_agent_id == agent_id;
+            let other_agent_id = if is_from {
+                &link.to_agent_id
+            } else {
+                &link.from_agent_id
+            };
+
+            let relationship = if is_from {
+                link.relationship
+            } else {
+                link.relationship.inverse()
+            };
+
+            let agent_info = crate::prompts::engine::LinkedAgent {
+                name: other_agent_id.clone(),
+                id: other_agent_id.clone(),
+            };
+
+            match relationship {
+                crate::links::LinkRelationship::Superior => superiors.push(agent_info),
+                crate::links::LinkRelationship::Subordinate => subordinates.push(agent_info),
+                crate::links::LinkRelationship::Peer => peers.push(agent_info),
+            }
+        }
+
+        if superiors.is_empty() && subordinates.is_empty() && peers.is_empty() {
+            return None;
+        }
+
+        let org_context = crate::prompts::engine::OrgContext {
+            superiors,
+            subordinates,
+            peers,
+        };
+
+        prompt_engine.render_org_context(org_context).ok()
+    }
+
+    /// Build link context for the current channel if it's an internal agent-to-agent channel.
+    fn build_link_context(
+        &self,
+        prompt_engine: &crate::prompts::PromptEngine,
+    ) -> Option<String> {
+        // Link channels have conversation IDs starting with "link:"
+        let conversation_id = self.conversation_id.as_deref()?;
+        if !conversation_id.starts_with("link:") {
+            return None;
+        }
+
+        let agent_id = self.deps.agent_id.as_ref();
+        let all_links = self.deps.links.load();
+
+        // Find the link that matches this channel's conversation ID
+        let link = all_links
+            .iter()
+            .find(|link| link.channel_id() == conversation_id)?;
+
+        let is_from = link.from_agent_id == agent_id;
+        let other_agent_id = if is_from {
+            &link.to_agent_id
+        } else {
+            &link.from_agent_id
+        };
+
+        let relationship = if is_from {
+            link.relationship
+        } else {
+            link.relationship.inverse()
+        };
+
+        let link_context = crate::prompts::engine::LinkContext {
+            agent_name: other_agent_id.clone(),
+            relationship: relationship.as_str().to_string(),
+        };
+
+        prompt_engine.render_link_context(link_context).ok()
+    }
+
     /// Assemble the full system prompt using the PromptEngine.
     async fn build_system_prompt(&self) -> String {
         let rc = &self.deps.runtime_config;
@@ -818,10 +936,13 @@ impl Channel {
 
         let available_channels = self.build_available_channels().await;
 
+        let org_context = self.build_org_context(&prompt_engine);
+        let link_context = self.build_link_context(&prompt_engine);
+
         let empty_to_none = |s: String| if s.is_empty() { None } else { Some(s) };
 
         prompt_engine
-            .render_channel_prompt(
+            .render_channel_prompt_with_links(
                 empty_to_none(identity_context),
                 empty_to_none(memory_bulletin.to_string()),
                 empty_to_none(skills_prompt),
@@ -830,6 +951,8 @@ impl Channel {
                 empty_to_none(status_text),
                 None, // coalesce_hint - only set for batched messages
                 available_channels,
+                org_context,
+                link_context,
             )
             .expect("failed to render channel prompt")
     }
@@ -860,6 +983,7 @@ impl Channel {
             skip_flag.clone(),
             replied_flag.clone(),
             self.deps.cron_tool.clone(),
+            self.send_agent_message_tool.clone(),
         )
         .await
         {
